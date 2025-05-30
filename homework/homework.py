@@ -50,7 +50,57 @@ def clean_campaign_data():
 
     """
 
-    return
+    import pandas as pd # type: ignore
+    from zipfile import ZipFile
+    import glob
+    import os
+
+    # Create output directory
+    os.makedirs('files/output', exist_ok=True)
+
+    # Read all zip files from input directory
+    dfs = []
+    for zip_file in glob.glob('files/input/*.zip'):
+        with ZipFile(zip_file) as zf:
+            for filename in zf.namelist():
+                if filename.endswith('.csv'):
+                    with zf.open(filename) as f:
+                        df = pd.read_csv(f)
+                        dfs.append(df)
+    
+    # Combine all dataframes
+    data = pd.concat(dfs, ignore_index=True)
+
+    # Process client data
+    client_df = data[['client_id', 'age', 'job', 'marital', 'education', 'credit_default', 'mortgage']].copy()
+    client_df['job'] = client_df['job'].str.replace('.', '').str.replace('-', '_')
+    client_df['education'] = client_df['education'].str.replace('.', '_')
+    client_df['education'] = client_df['education'].replace('unknown', pd.NA)
+    client_df['credit_default'] = (client_df['credit_default'] == 'yes').astype(int)
+    client_df['mortgage'] = (client_df['mortgage'] == 'yes').astype(int)
+
+    # Process campaign data
+    campaign_df = data[['client_id', 'number_contacts', 'contact_duration','previous_campaign_contacts', 'previous_outcome', 
+                       'campaign_outcome', 'day', 'month']].copy()
+    campaign_df['previous_outcome'] = (campaign_df['previous_outcome'] == 'success').astype(int)
+    campaign_df['campaign_outcome'] = (campaign_df['campaign_outcome'] == 'yes').astype(int)
+    
+    # Create date column combining day, month with year 2022
+    campaign_df['last_contact_date'] = pd.to_datetime(
+        '2022-' + campaign_df['month'].astype(str) + '-' + campaign_df['day'].astype(str),
+        format='%Y-%b-%d'
+    ).dt.strftime('%Y-%m-%d')
+    
+    # Drop original day and month columns
+    campaign_df = campaign_df.drop(['day', 'month'], axis=1)
+
+    # Process economics data
+    economics_df = data[['client_id', 'cons_price_idx', 'euribor_three_months']].copy()
+
+    # Save processed dataframes to CSV files
+    client_df.to_csv('files/output/client.csv', index=False)
+    campaign_df.to_csv('files/output/campaign.csv', index=False)
+    economics_df.to_csv('files/output/economics.csv', index=False)
 
 
 if __name__ == "__main__":
